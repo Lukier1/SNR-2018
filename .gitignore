@@ -1,0 +1,6 @@
+.env/***
+bsif_filters/**
+images/**
+models/**
+ZAD1/__pycache__
+.vscode
