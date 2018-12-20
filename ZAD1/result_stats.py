@@ -15,10 +15,11 @@ from dataset import Dataset
 from model import Classifier
 from utils import output_root, model_output_filename
 
-
+OUTPUT_STATS = "stats/"
 CLASS_NUMBER = 32
 
 def calcStatAndGenPlotForModel(filter_size, filter_depth, layer):
+    print(f'Calc stats for {filter_size}x{filter_size} {filter_depth}bits {layer} layer')
     model = Classifier(layer)
 
     model_filename = model_output_filename(filter_size, filter_depth, layer)
@@ -33,6 +34,8 @@ def calcStatAndGenPlotForModel(filter_size, filter_depth, layer):
 
     t_c = np.zeros((CLASS_NUMBER, 102))
     f_c = np.zeros((CLASS_NUMBER, 102))
+    tn_c = np.zeros((CLASS_NUMBER, 102))
+    tp_c = np.zeros((CLASS_NUMBER, 102))
     t_n = np.zeros((CLASS_NUMBER, 1))
     f_n = np.zeros((CLASS_NUMBER, 1))
 
@@ -74,28 +77,37 @@ def calcStatAndGenPlotForModel(filter_size, filter_depth, layer):
             chance_idx = math.ceil(chance_table[0, y]*100)+1
             if y == label_id: #klasa pozytywna(P)
                 t_c[y, :chance_idx ] += 1
+                if y == predicted[0]:
+                    tp_c[y, 0] += 1
                 t_n[y, 0] += 1
             else: #klasa negatywna
                 f_c[y, :chance_idx ] += 1
                 f_n[y, 0] += 1
-                
+                if y != predicted[0]:
+                    tn_c[y, 0] += 1
         
     print("Top 1 = " + str(correct_top1/dataset.__len__()))
     print("Top 5 = " + str(correct_top5/dataset.__len__()))
 
+    filename_part = f'Result for {filter_size}x{filter_size} {filter_depth}bit {layer} layers'
+
+    with open(OUTPUT_STATS + filename_part+'top.csv', 'w') as csvfile:
+        writer = csv.writer(csvfile, delimiter=",", quoting=csv.QUOTE_ALL)
+        writer.writerow(['TOP-1', str(correct_top1/dataset.__len__())])
+        writer.writerow(['TOP-5', str(correct_top5/dataset.__len__())])
+        writer.writerow(['Class', 'Accurancy'])
+        
+        #Accuracy ACC = TP+TN/ALL
+        for y in range(0, CLASS_NUMBER):
+            acc = (tp_c[y, 0] + tn_c[y, 0])/(t_n[y, 0]+f_n[y, 0])
+            writer.writerow([dataset.getLabelName(y), acc])
+
     x = np.arange(CLASS_NUMBER)
     y = rank_array[x]/dataset.__len__()
     fig, ax = plt.subplots()
-
-    # Using set_dashes() to modify dashing of an existing line
-    line1, = ax.plot(x, y, label=f'CMC for {filter_size}x{filter_size} {filter_depth}bit')
-    #line1.set_dashes([2, 2, 10, 2])  # 2pt line, 2pt break, 10pt line, 2pt break
-
-    # Using plot(..., dashes=...) to set the dashing when creating a line
-    #line2, = ax.plot(x, y - 0.2, dashes=[6, 2], label='Using the dashes parameter')
-
+    line1, = ax.plot(x, y, label=f'CMC for {filter_size}x{filter_size} {filter_depth}bit {layer} layers')
     ax.legend()
-    plt.show()
+    plt.savefig(OUTPUT_STATS + filename_part+ "_CMC.png", bbox_inches="tight")
 
     tpr = t_c/t_n
     fpr = f_c/f_n
@@ -105,14 +117,12 @@ def calcStatAndGenPlotForModel(filter_size, filter_depth, layer):
 
 
     fig2, ax2 = plt.subplots()
-
-    # Using set_dashes() to modify dashing of an existing line
+    plt.subplots_adjust(right=0.7)
+    labels_legend = []
     for y in range(0, CLASS_NUMBER):
         _, = ax2.plot(x2[y, :], y2[y, :], label=dataset.getLabelName(y))
-    #line1.set_dashes([2, 2, 10, 2])  # 2pt line, 2pt break, 10pt line, 2pt break
-
-    # Using plot(..., dashes=...) to set the dashing when creating a line
-    #line2, = ax.plot(x, y - 0.2, dashes=[6, 2], label='Using the dashes parameter')
-
-    ax2.legend()
-    plt.show()
+    plt.title(f"{filter_size}x{filter_size} {filter_depth}bit {layer} layers")
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol = 2)
+    plt.savefig(OUTPUT_STATS + filename_part+ "_ROC.png", bbox_inches="tight")
+    print('... Finish calc stats')
+# calcStatAndGenPlotForModel(15, 8, 5)

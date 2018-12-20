@@ -26,6 +26,7 @@ def imageOnBSIFFilter(img, filter_size, filter_depth):
 
 def loadGrayImage(file_name):
     img = cv2.imread(file_name)
+    # Tutaj byla analiza po kolorach
     # img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     # mask = cv2.inRange(img, (30,0,0), (120,255,255))
     # imask = mask>0
