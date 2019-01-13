@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from io import BytesIO
 
 import numpy as np
 import torch
@@ -7,64 +8,85 @@ from torch import optim
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from torchvision import datasets, transforms, models
 
+from pytorchtools import EarlyStopping
+
 DATA_DIR = 'images/Folio'
 VALIDATION_SPLIT = .2
 SEED = 42  # fixed seed to have repeatable results
 BATCH_SIZE = 64
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device used: {device}")
 
 
-def learn_and_save_model(augment=False, shuffle=True, train_whole=False):
-    train_loader, valid_loader, test_loader = get_data_loaders(augment, shuffle)
-
-    model = get_model(train_whole)
-
-    model.to(device)
+def learn_and_save_model(augment=False, train_whole=False):
+    model_to_learn = "densenet121"
+    print(f"Training {model_to_learn}.. Training whole model: {train_whole}.. "
+          f"Augment: {augment}..")
+    train_loader, valid_loader, test_loader = get_data_loaders(augment, True)
+    model = get_model(model_to_learn, train_whole)
     optimizer = optim.SGD(model.parameters(), lr=0.01)
     criterion = nn.NLLLoss()
-    epochs = 10
-    steps = 0
-    running_loss = 0
-    print_every = 1
-    for epoch in range(epochs):
+    fname = f"model_{model_to_learn}_{train_whole}_{augment}"
+    train_model(model, train_loader, valid_loader, optimizer, criterion, 100,
+                f"{fname}_checkpoint.pt")
+    torch.save(model.state_dict(), f"{fname}_final.pt")
+
+
+def train_model(model, train_loader, valid_loader, optimizer, criterion,
+                max_epochs, checkpoint=None):
+    model.to(device)
+    train_loss_history = []
+    valid_loss_history = []
+    accuracy_history = []
+    f = BytesIO() if checkpoint is None else checkpoint
+    early_stopping = EarlyStopping(verbose=True, f=f)
+    for epoch in range(max_epochs):
+        train_losses = []
+        valid_losses = []
+        accuracies = []
+        # Train
+        model.train()
         for inputs, labels in train_loader:
-            steps += 1
             # Move input and label tensors to the default device
             inputs, labels = inputs.to(device), labels.to(device)
-
             optimizer.zero_grad()
-
-            logps = model.forward(inputs)
-            loss = criterion(logps, labels)
+            output = model.forward(inputs)
+            loss = criterion(output, labels)
             loss.backward()
             optimizer.step()
+            train_losses.append(loss.item())
+        # Evaluate
+        model.eval()
+        with torch.no_grad():
+            for inputs, labels in valid_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                output = model.forward(inputs)
+                loss = criterion(output, labels)
+                valid_losses.append(loss.item())
+                accuracies.append(calculate_accuracy(labels, output))
+        train_loss = np.average(train_losses)
+        valid_loss = np.average(valid_losses)
+        accuracy = np.average(accuracies)
+        train_loss_history.append(train_loss)
+        valid_loss_history.append(valid_loss)
+        accuracy_history.append(accuracy)
+        print(f"Epoch {epoch+1}/{max_epochs}.. "
+              f"Train loss: {train_loss:.3f}.. "
+              f"Validation loss: {valid_loss:.3f}.. "
+              f"Validation accuracy: {accuracy:.3f}")
+        early_stopping(valid_loss, model)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+    early_stopping.load_checkpoint(model)
 
-            running_loss += loss.item()
-        if epoch % print_every == 0:
-            test_loss = 0
-            accuracy = 0
-            model.eval()
-            with torch.no_grad():
-                for inputs, labels in valid_loader:
-                    inputs, labels = inputs.to(device), labels.to(device)
-                    logps = model.forward(inputs)
-                    batch_loss = criterion(logps, labels)
-                    test_loss += batch_loss.item()
-                    # Calculate accuracy
-                    ps = torch.exp(logps)
-                    top_p, top_class = ps.topk(1, dim=1)
-                    equals = top_class == labels.view(*top_class.shape)
-                    accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
 
-            print(f"Epoch {epoch+1}/{epochs}.. "
-                  f"Step {steps}.. "
-                  f"Train loss: {running_loss/print_every:.3f}.. "
-                  f"Test loss: {test_loss/len(test_loader):.3f}.. "
-                  f"Test accuracy: {accuracy/len(test_loader):.3f}")
-            running_loss = 0
-            model.train()
-
-    torch.save(model.state_dict(), f"output_{train_whole}")
+def calculate_accuracy(labels, logps):
+    ps = torch.exp(logps)
+    top_p, top_class = ps.topk(1, dim=1)
+    equals = top_class == labels.view(*top_class.shape)
+    accuracy = torch.mean(equals.type(torch.FloatTensor)).item()
+    return accuracy
 
 
 def get_data_loaders(augment, shuffle):
@@ -107,8 +129,8 @@ def get_transforms(augment):
     return train_transforms, valid_transforms
 
 
-def get_model(train_whole):
-    model = models.densenet121(True)
+def get_model(name, train_whole):
+    model = getattr(models, name)(pretrained=True)
     if not train_whole:
         # Freeze parameters so we don't do back propagation through them
         for param in model.parameters():
@@ -121,5 +143,6 @@ def get_model(train_whole):
 
 
 if __name__ == '__main__':
-    learn_and_save_model(train_whole=True)
     learn_and_save_model(train_whole=False)
+    learn_and_save_model(train_whole=True)
+    learn_and_save_model(augment=True, train_whole=True)
