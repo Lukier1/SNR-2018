@@ -1,4 +1,5 @@
 import csv
+import time
 from collections import OrderedDict
 
 import numpy as np
@@ -37,9 +38,11 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
     train_loss_history = []
     valid_loss_history = []
     accuracy_history = []
+    time_history = []
     early_stopping = EarlyStopping(verbose=True, patience=5,
                                    f=f"{prefix}_checkpoint.pt")
     for epoch in range(max_epochs):
+        ts = time.time()
         train_losses = []
         valid_losses = []
         accuracies = []
@@ -63,13 +66,17 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
                 loss = criterion(output, labels)
                 valid_losses.append(loss.item())
                 accuracies.append(calculate_accuracy(labels, output))
+        te = time.time()
         train_loss = np.average(train_losses)
         valid_loss = np.average(valid_losses)
         accuracy = np.average(accuracies)
+        tt = (te - ts) * 1000
         train_loss_history.append(train_loss)
         valid_loss_history.append(valid_loss)
         accuracy_history.append(accuracy)
+        time_history.append(tt)
         print(f"Epoch {epoch+1}/{max_epochs}.. "
+              f"Took {tt}ms.. "
               f"Train loss: {train_loss:.3f}.. "
               f"Validation loss: {valid_loss:.3f}.. "
               f"Validation accuracy: {accuracy:.3f}")
@@ -77,18 +84,17 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
         if early_stopping.early_stop:
             print("Early stopping")
             break
+    print(f"Finished training in {sum(time_history)}")
     early_stopping.load_checkpoint(model)
     torch.save(model.state_dict(), f"{prefix}_final.pt")
     save_training_history(accuracy_history, train_loss_history,
-                          valid_loss_history)
+                          valid_loss_history, time_history)
 
 
-def save_training_history(accuracy_history, train_loss_history,
-                          valid_loss_history):
+def save_training_history(*histories):
     with open(f"{prefix}_training_history.csv", 'w') as csv_file:
         writer = csv.writer(csv_file, delimeter=' ')
-        for row in zip(train_loss_history, valid_loss_history,
-                       accuracy_history):
+        for row in zip(*histories):
             writer.writerow(row)
 
 
