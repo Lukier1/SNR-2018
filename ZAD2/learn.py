@@ -1,5 +1,5 @@
+import csv
 from collections import OrderedDict
-from io import BytesIO
 
 import numpy as np
 import torch
@@ -18,28 +18,27 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device used: {device}")
 
 
-def learn_and_save_model(augment=False, train_whole=False):
-    model_to_learn = "densenet121"
-    print(f"Training {model_to_learn}.. Training whole model: {train_whole}.. "
-          f"Augment: {augment}..")
+def learn_and_save_model(augment=False, train_whole=False, max_epoches=100):
+    model_to_train = "densenet121"
+    print(f"Training {model_to_train}.. Training whole model: {train_whole}.. "
+          f"Augment: {augment}.. Max epoches: {max_epoches}..")
     train_loader, valid_loader, test_loader = get_data_loaders(augment, True)
-    model = get_model(model_to_learn, train_whole)
+    model = get_model(model_to_train, train_whole)
     optimizer = optim.SGD(model.parameters(), lr=0.01)
     criterion = nn.NLLLoss()
-    fname = f"model_{model_to_learn}_{train_whole}_{augment}"
-    train_model(model, train_loader, valid_loader, optimizer, criterion, 100,
-                f"{fname}_checkpoint.pt")
-    torch.save(model.state_dict(), f"{fname}_final.pt")
+    file_prefix = f"model_{model_to_train}_{train_whole}_{augment}"
+    train_model(model, train_loader, valid_loader, optimizer, criterion,
+                max_epoches, file_prefix)
 
 
 def train_model(model, train_loader, valid_loader, optimizer, criterion,
-                max_epochs, checkpoint=None):
+                max_epochs, prefix):
     model.to(device)
     train_loss_history = []
     valid_loss_history = []
     accuracy_history = []
-    f = BytesIO() if checkpoint is None else checkpoint
-    early_stopping = EarlyStopping(verbose=True, f=f)
+    early_stopping = EarlyStopping(verbose=True, patience=5,
+                                   f=f"{prefix}_checkpoint.pt")
     for epoch in range(max_epochs):
         train_losses = []
         valid_losses = []
@@ -79,6 +78,18 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
             print("Early stopping")
             break
     early_stopping.load_checkpoint(model)
+    torch.save(model.state_dict(), f"{prefix}_final.pt")
+    save_training_history(accuracy_history, train_loss_history,
+                          valid_loss_history)
+
+
+def save_training_history(accuracy_history, train_loss_history,
+                          valid_loss_history):
+    with open(f"{prefix}_training_history.csv", 'w') as csv_file:
+        writer = csv.writer(csv_file, delimeter=' ')
+        for row in zip(train_loss_history, valid_loss_history,
+                       accuracy_history):
+            writer.writerow(row)
 
 
 def calculate_accuracy(labels, logps):
