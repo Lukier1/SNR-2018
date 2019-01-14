@@ -70,7 +70,7 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
         train_loss = np.average(train_losses)
         valid_loss = np.average(valid_losses)
         accuracy = np.average(accuracies)
-        tt = (te - ts) * 1000
+        tt = round((te - ts) * 1000)
         train_loss_history.append(train_loss)
         valid_loss_history.append(valid_loss)
         accuracy_history.append(accuracy)
@@ -84,16 +84,16 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
         if early_stopping.early_stop:
             print("Early stopping")
             break
-    print(f"Finished training in {sum(time_history)}")
+    print(f"Finished training in {sum(time_history)}ms")
     early_stopping.load_checkpoint(model)
     torch.save(model.state_dict(), f"{prefix}_final.pt")
-    save_training_history(accuracy_history, train_loss_history,
-                          valid_loss_history, time_history)
+    save_training_history(prefix, train_loss_history, valid_loss_history,
+                          accuracy_history, time_history)
 
 
-def save_training_history(*histories):
+def save_training_history(prefix, *histories):
     with open(f"{prefix}_training_history.csv", 'w') as csv_file:
-        writer = csv.writer(csv_file, delimeter=' ')
+        writer = csv.writer(csv_file, delimiter=' ')
         for row in zip(*histories):
             writer.writerow(row)
 
