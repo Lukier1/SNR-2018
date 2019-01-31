@@ -50,6 +50,7 @@ class EarlyStopping:
     def __call__(self, val_loss, model):
         if self.dummy:
             self.save_checkpoint(val_loss, model)
+            return
 
         score = -val_loss
 

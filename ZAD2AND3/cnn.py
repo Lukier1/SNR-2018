@@ -40,13 +40,14 @@ def train_and_save_model(output_dir, augment=False, train_whole=False,
                          drop_rate=0, max_epoches=10, do_early_stop=False):
     model_to_train = "densenet121"
     print(f"Training {model_to_train}.. Training whole model: {train_whole}.. "
-          f"Augment: {augment}.. Max epoches: {max_epoches}..")
+          f"Augment: {augment}.. Max epoches: {max_epoches}.."
+          f"Do early stop: {do_early_stop}..")
     train_loader, valid_loader, test_loader = get_data_loaders(augment, True)
     model = get_model(model_to_train, train_whole, drop_rate)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.NLLLoss()
     file_prefix = get_file_prefix(model_to_train, train_whole, augment,
-                                  drop_rate, optimizer)
+                                  drop_rate, do_early_stop, optimizer)
     train_model(model, train_loader, valid_loader, optimizer, criterion,
                 max_epoches, file_prefix, output_dir, do_early_stop)
     generate_stats_and_plots(model, test_loader, file_prefix, output_dir)
@@ -60,11 +61,12 @@ def create_output_dir():
     return path
 
 
-def get_file_prefix(model_to_train, train_whole, augment, drop_rate, optimizer):
+def get_file_prefix(model_to_train, train_whole, augment, drop_rate, do_early_stop, optimizer):
     prefix = f"model_{model_to_train}"
     prefix += "_whole_training" if train_whole else "_classifier_training"
     prefix += "_with_augmentation" if augment else "_no_augmentation"
     prefix += f"_drop_rate_{drop_rate*100}"
+    prefix += ("_with" if do_early_stop else "_no") + "_early_stop"
     prefix += f"_{type(optimizer).__name__}"
     return prefix
 
@@ -76,7 +78,7 @@ def train_model(model, train_loader, valid_loader, optimizer, criterion,
     valid_loss_history = []
     accuracy_history = []
     time_history = []
-    early_stopping = EarlyStopping(verbose=True, patience=3,
+    early_stopping = EarlyStopping(verbose=True, patience=2,
                                    f=Path(output_dir,
                                           f"{prefix}_checkpoint.pt"),
                                    dummy=not do_early_stop)
@@ -288,7 +290,7 @@ def run():
                          max_epoches=20)
     train_and_save_model(output_dir, train_whole=False, augment=False,
                          max_epoches=20, do_early_stop=True)
-    train_and_save_model(output_dir, train_whole=False, augment=False,
+    train_and_save_model(output_dir, train_whole=False, augment=True,
                          max_epoches=10)
 
 
